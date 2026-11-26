@@ -7,6 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+IS_VERCEL = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV"))
+DEFAULT_SQLITE_PATH = Path("/tmp/gold_ai.db") if IS_VERCEL else (BASE_DIR / "gold_ai.db")
 
 
 class Settings(BaseSettings):
@@ -20,10 +22,11 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     host: str = "0.0.0.0"
     port: int = 8000
+    is_vercel: bool = IS_VERCEL
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
-    # Database (supports PostgreSQL / Supabase via DATABASE_URL; defaults to local SQLite)
-    database_url: str = f"sqlite:///{BASE_DIR / 'gold_ai.db'}"
+    # Database (supports PostgreSQL / Supabase / Neon via DATABASE_URL; falls back to /tmp/gold_ai.db on Vercel or local SQLite)
+    database_url: str = f"sqlite:///{DEFAULT_SQLITE_PATH}"
 
     # Market data providers (all optional API keys stay strictly server-side)
     # Primary default: BiQuote public Spot XAUUSD REST API + Swissquote BBO failover/cross-check

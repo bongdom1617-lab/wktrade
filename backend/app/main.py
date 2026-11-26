@@ -48,9 +48,14 @@ monitor = RealTimeMonitor()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
-    await monitor.start()
-    yield
-    await monitor.stop()
+    if settings.is_vercel:
+        monitor.init_serverless()
+        yield
+        await monitor.market.close()
+    else:
+        await monitor.start()
+        yield
+        await monitor.stop()
 
 
 app = FastAPI(
@@ -72,18 +77,27 @@ app.add_middleware(
 )
 
 
+async def _ensure_serverless(need_analysis: bool = True, target_tf: Optional[Timeframe] = None) -> None:
+    if settings.is_vercel:
+        init_db()
+        await monitor.ensure_fresh_serverless(need_analysis=need_analysis, target_tf=target_tf)
+
+
 @app.get("/api/health", response_model=FeedHealthResponse)
 async def get_health() -> FeedHealthResponse:
+    await _ensure_serverless(need_analysis=False)
     return monitor.market.get_health()
 
 
 @app.get("/api/dashboard", response_model=DashboardSnapshot)
 async def get_dashboard() -> DashboardSnapshot:
+    await _ensure_serverless(need_analysis=True)
     return monitor.get_dashboard_snapshot()
 
 
 @app.get("/api/quote", response_model=Optional[LiveQuote])
 async def get_quote() -> Optional[LiveQuote]:
+    await _ensure_serverless(need_analysis=False)
     return monitor.market.latest_quote
 
 
@@ -91,16 +105,19 @@ async def get_quote() -> Optional[LiveQuote]:
 async def get_candles(timeframe: Timeframe) -> CandleSeriesResponse:
     if timeframe not in ALL_TIMEFRAMES:
         raise HTTPException(status_code=400, detail=f"Unsupported timeframe: {timeframe}")
+    await _ensure_serverless(need_analysis=True, target_tf=timeframe)
     return monitor.get_candles_response(timeframe)
 
 
 @app.get("/api/analysis/mtf", response_model=Optional[MtfSynthesis])
 async def get_mtf_analysis() -> Optional[MtfSynthesis]:
+    await _ensure_serverless(need_analysis=True)
     return monitor.mtf
 
 
 @app.get("/api/signal", response_model=Optional[TradingSignal])
 async def get_current_signal() -> Optional[TradingSignal]:
+    await _ensure_serverless(need_analysis=True)
     return monitor.current_signal
 
 
@@ -126,6 +143,7 @@ async def preview_risk_calculator(
     Preview Smart SL/TP calculation and position sizing for educational risk planning.
     Always clearly notes whether the preview matches the current AI primary recommendation.
     """
+    await _ensure_serverless(need_analysis=True)
     quote = monitor.market.latest_quote
     mtf = monitor.mtf
     if quote is None or mtf is None:
@@ -176,6 +194,8 @@ async def get_performance_overview(
     risk_percent: float = Query(1.0, ge=0.1, le=5.0),
 ) -> PerformanceOverviewResponse:
     """Returns strictly separated Live Forward-Testing and Historical Backtesting performance."""
+    if settings.is_vercel:
+        init_db()
     provider = monitor.market.get_health().active_quote_provider or "BiQuote Spot XAUUSD"
     forward = build_forward_test_report(
         active_provider=provider,
@@ -213,6 +233,8 @@ async def run_historical_backtest(req: BacktestRequest) -> BacktestReport:
     Execute a zero-lookahead historical XAUUSD backtest on real external OHLC candles
     including spread and slippage costs. Persists every timestamped trade for auditability.
     """
+    if settings.is_vercel:
+        init_db()
     try:
         return await execute_and_persist_backtest(req, live_cache=monitor.market.candles)
     except MarketDataError as exc:

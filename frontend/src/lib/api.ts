@@ -3,6 +3,7 @@ import type {
   BacktestRequestPayload,
   CandleSeriesResponse,
   DashboardSnapshot,
+  LiveQuote,
   PerformanceOverviewResponse,
   RiskPreviewResponse,
   Timeframe,
@@ -43,6 +44,12 @@ export function getWsUrl(): string {
 export async function fetchDashboard(): Promise<DashboardSnapshot> {
   const res = await fetch(`${getApiBase()}/api/dashboard`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Dashboard fetch failed (${res.status})`);
+  return res.json();
+}
+
+export async function fetchQuote(): Promise<LiveQuote | null> {
+  const res = await fetch(`${getApiBase()}/api/quote`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Quote fetch failed (${res.status})`);
   return res.json();
 }
 

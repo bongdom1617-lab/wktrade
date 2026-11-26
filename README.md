@@ -51,3 +51,14 @@ npm run dev
 cd backend
 .venv/bin/pytest -s -v
 ```
+
+---
+
+## Deploy to Vercel (Frontend + FastAPI Backend Together)
+
+This repository includes a root `vercel.json` configured with **Vercel Services** so Next.js (`frontend/`) and Python FastAPI (`backend/api/index.py`) deploy **together as one single Vercel project**:
+
+1. Open https://vercel.com/new and import **`bongdom1617-lab/wktrade`**.
+2. Leave **Root Directory** as `.` (repo root — `vercel.json` automatically wires `frontend/` and `backend/` together and routes `/api/*` → FastAPI and `/*` → Next.js).
+3. *(Recommended for permanent cloud history)* Add a **`DATABASE_URL`** environment variable pointing to **Supabase** or **Neon PostgreSQL** (`postgresql://...`). If omitted, the backend automatically uses writable `/tmp/gold_ai.db` on Vercel Serverless so deployment works out-of-the-box.
+4. Click **Deploy**. On Vercel Serverless, the frontend automatically switches from WebSocket to **Live HTTP Sync** (3s live quotes + 15s MTF analysis) with zero configuration.

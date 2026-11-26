@@ -12,7 +12,7 @@ import SignalHistoryPanel from "@/components/SignalHistoryPanel";
 import AlertsFeedPanel from "@/components/AlertsFeedPanel";
 import PerformanceBacktestModule from "@/components/PerformanceBacktestModule";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import { fetchCandles, fetchDashboard, getWsUrl, triggerForceRefresh } from "@/lib/api";
+import { fetchCandles, fetchDashboard, fetchQuote, getWsUrl, triggerForceRefresh } from "@/lib/api";
 import type {
   ActiveTradeMonitor,
   CandleSeriesResponse,
@@ -47,6 +47,7 @@ export default function GoldAiTerminalPage() {
   const [candleData, setCandleData] = useState<CandleSeriesResponse | null>(null);
   const [candleLoading, setCandleLoading] = useState(true);
   const [wsConnected, setWsConnected] = useState(false);
+  const [streamMode, setStreamMode] = useState<"ws" | "polling" | "reconnecting">("reconnecting");
   const [refreshing, setRefreshing] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
@@ -107,24 +108,95 @@ export default function GoldAiTerminalPage() {
     return () => clearInterval(interval);
   }, [selectedTf, loadCandles]);
 
-  // Real-time WebSocket stream with automatic reconnection
+  // Real-time WebSocket stream with automatic Serverless HTTP Live-Polling fallback (for Vercel)
   useEffect(() => {
     let ws: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let pingTimer: ReturnType<typeof setInterval> | null = null;
+    let quotePollTimer: ReturnType<typeof setInterval> | null = null;
+    let snapPollTimer: ReturnType<typeof setInterval> | null = null;
+    let consecutiveWsFailures = 0;
+    let pollingActive = false;
     let unmounted = false;
 
+    const startPollingFallback = () => {
+      if (pollingActive || unmounted) return;
+      pollingActive = true;
+      setStreamMode("polling");
+
+      quotePollTimer = setInterval(async () => {
+        if (unmounted) return;
+        try {
+          const q = await fetchQuote();
+          if (q && !unmounted) {
+            setBackendError(null);
+            setSnapshot((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    timestamp: q.fetched_at,
+                    quote: q,
+                    feed_health: {
+                      ...prev.feed_health,
+                      status: q.status,
+                      quote_age_seconds: q.quote_age_seconds,
+                      last_update: q.quote_timestamp,
+                    },
+                  }
+                : prev
+            );
+          }
+        } catch {
+          // transient poll miss — retried automatically on next tick
+        }
+      }, 3000);
+
+      snapPollTimer = setInterval(async () => {
+        if (unmounted) return;
+        try {
+          const nextSnap = await fetchDashboard();
+          if (!unmounted) {
+            setSnapshot(nextSnap);
+            setBackendError(null);
+            if (nextSnap.recent_alerts.length > 0) {
+              const newest = nextSnap.recent_alerts[0];
+              if (
+                lastAlertIdRef.current !== null &&
+                newest.id > lastAlertIdRef.current &&
+                (newest.severity === "SIGNAL" || newest.severity === "CRITICAL") &&
+                soundEnabledRef.current
+              ) {
+                playAlertBeep();
+              }
+              lastAlertIdRef.current = newest.id;
+            }
+          }
+        } catch {
+          // retried next cycle
+        }
+      }, 15000);
+    };
+
     const connect = () => {
-      if (unmounted) return;
+      if (unmounted || pollingActive) return;
+      let opened = false;
       try {
         ws = new WebSocket(getWsUrl());
       } catch {
-        reconnectTimer = setTimeout(connect, 3000);
+        consecutiveWsFailures += 1;
+        if (consecutiveWsFailures >= 2) {
+          startPollingFallback();
+        } else {
+          reconnectTimer = setTimeout(connect, 2500);
+        }
         return;
       }
 
       ws.onopen = () => {
+        opened = true;
+        consecutiveWsFailures = 0;
         setWsConnected(true);
+        setStreamMode("ws");
         setBackendError(null);
         pingTimer = setInterval(() => {
           if (ws && ws.readyState === WebSocket.OPEN) {
@@ -139,7 +211,6 @@ export default function GoldAiTerminalPage() {
           if (msg.type === "snapshot" && msg.data) {
             const nextSnap = msg.data as DashboardSnapshot;
             setSnapshot(nextSnap);
-            // Play chime on brand-new high-priority alert
             if (nextSnap.recent_alerts.length > 0) {
               const newest = nextSnap.recent_alerts[0];
               if (
@@ -152,7 +223,6 @@ export default function GoldAiTerminalPage() {
               }
               lastAlertIdRef.current = newest.id;
             }
-            // Refresh chart candles when full snapshot updates
             loadCandles(selectedTfRef.current);
           } else if (msg.type === "quote_tick" && msg.data) {
             const tick = msg.data as {
@@ -181,9 +251,17 @@ export default function GoldAiTerminalPage() {
       ws.onclose = () => {
         setWsConnected(false);
         if (pingTimer) clearInterval(pingTimer);
-        if (!unmounted) {
-          reconnectTimer = setTimeout(connect, 2500);
+        if (unmounted) return;
+        if (!opened) {
+          consecutiveWsFailures += 1;
+          // On Vercel Serverless (where WebSockets are unavailable), switch cleanly to Live HTTP Polling
+          if (consecutiveWsFailures >= 2) {
+            startPollingFallback();
+            return;
+          }
         }
+        setStreamMode("reconnecting");
+        reconnectTimer = setTimeout(connect, 2500);
       };
 
       ws.onerror = () => {
@@ -196,6 +274,8 @@ export default function GoldAiTerminalPage() {
       unmounted = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (pingTimer) clearInterval(pingTimer);
+      if (quotePollTimer) clearInterval(quotePollTimer);
+      if (snapPollTimer) clearInterval(snapPollTimer);
       ws?.close();
     };
   }, [loadCandles]);
@@ -224,6 +304,7 @@ export default function GoldAiTerminalPage() {
           quote={snapshot?.quote ?? null}
           health={snapshot?.feed_health ?? null}
           wsConnected={wsConnected}
+          streamMode={streamMode}
           refreshing={refreshing}
           onRefresh={handleForceRefresh}
         />

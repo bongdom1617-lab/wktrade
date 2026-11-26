@@ -63,11 +63,66 @@ class RealTimeMonitor:
         self._last_feed_status: Optional[FeedStatus] = None
         self._last_tf_fetch: Dict[Timeframe, float] = {tf: 0.0 for tf in ALL_TIMEFRAMES}
         self._last_analysis_ts: float = 0.0
+        self._last_quote_ts: float = 0.0
         self._last_prune_ts: float = 0.0
+        self._serverless_lock: Optional[asyncio.Lock] = None
         self._last_emitted_dir: Optional[str] = None
         self._last_emitted_time: float = 0.0
         self._last_emitted_price: float = 0.0
         self._initialized: bool = False
+
+    def init_serverless(self) -> None:
+        """Lightweight startup for Vercel Serverless (no infinite background loop)."""
+        sync_existing_live_signals_to_forward_ledger()
+        self._load_active_signal_from_db()
+
+    async def ensure_fresh_serverless(
+        self,
+        need_analysis: bool = True,
+        target_tf: Optional[Timeframe] = None,
+    ) -> None:
+        """
+        On-demand live refresh with short TTL cache for Vercel Serverless deployments.
+        Guarantees fresh real XAUUSD quotes (~3s TTL) and multi-timeframe analysis (~20s TTL)
+        without requiring a long-running daemon process.
+        """
+        if self._serverless_lock is None:
+            self._serverless_lock = asyncio.Lock()
+
+        async with self._serverless_lock:
+            now_m = time.monotonic()
+            missing_tfs = [tf for tf in ALL_TIMEFRAMES if len(self.market.get_candles(tf)) == 0]
+            candles_stale = (now_m - self._last_analysis_ts) >= 20.0
+
+            if need_analysis and (not self._initialized or missing_tfs or candles_stale):
+                await self.market.refresh_all_timeframes()
+                for tf in ALL_TIMEFRAMES:
+                    if len(self.market.get_candles(tf)) > 0:
+                        self._last_tf_fetch[tf] = now_m
+                await self.market.refresh_quote()
+                self._last_quote_ts = now_m
+                if self.market.latest_quote is not None and self.market.get_health().status == "LIVE":
+                    self._monitor_active_signal_tick(self.market.latest_quote)
+                await self.recalculate_analysis(trigger="serverless_sync")
+                self._initialized = True
+                return
+
+            if target_tf is not None and (
+                len(self.market.get_candles(target_tf)) == 0
+                or (now_m - self._last_tf_fetch.get(target_tf, 0.0)) >= 20.0
+            ):
+                try:
+                    await self.market.refresh_candles(target_tf)
+                    self._last_tf_fetch[target_tf] = now_m
+                except Exception as exc:
+                    logger.warning("Serverless candle refresh warning (%s): %s", target_tf, exc)
+
+            if self.market.latest_quote is None or (now_m - self._last_quote_ts) >= 3.0:
+                quote = await self.market.refresh_quote()
+                self._last_quote_ts = now_m
+                if quote is not None and self.market.get_health().status == "LIVE":
+                    if self._monitor_active_signal_tick(quote):
+                        await self.recalculate_analysis(trigger="serverless_signal_event")
 
     async def start(self) -> None:
         if self._running:

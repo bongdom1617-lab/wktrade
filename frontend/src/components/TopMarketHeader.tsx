@@ -18,6 +18,7 @@ interface TopMarketHeaderProps {
   quote: LiveQuote | null;
   health: FeedHealthResponse | null;
   wsConnected: boolean;
+  streamMode?: "ws" | "polling" | "reconnecting";
   refreshing: boolean;
   onRefresh: () => void;
 }
@@ -26,6 +27,7 @@ export default function TopMarketHeader({
   quote,
   health,
   wsConnected,
+  streamMode = "ws",
   refreshing,
   onRefresh,
 }: TopMarketHeaderProps) {
@@ -171,16 +173,22 @@ export default function TopMarketHeader({
               )}
             </div>
 
-            {/* WebSocket Status */}
+            {/* Transport Status (WebSocket on Local/Tunnel or Live HTTP Polling on Serverless Vercel) */}
             <div
               className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium ${
-                wsConnected
+                wsConnected || streamMode === "polling"
                   ? "border-sky-500/30 bg-sky-500/10 text-sky-300"
                   : "border-amber-500/30 bg-amber-500/10 text-amber-300"
               }`}
             >
-              {wsConnected ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-              <span>{wsConnected ? "WS Live" : "Reconnecting"}</span>
+              {wsConnected || streamMode === "polling" ? (
+                <Wifi className="h-3.5 w-3.5" />
+              ) : (
+                <WifiOff className="h-3.5 w-3.5" />
+              )}
+              <span>
+                {wsConnected ? "WS Live" : streamMode === "polling" ? "Live Sync" : "Reconnecting"}
+              </span>
             </div>
 
             {/* Jump to Backtest & Performance Module */}
