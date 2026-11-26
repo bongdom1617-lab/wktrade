@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env.local
+
+# Python / Backend
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite*
+
+# Node / Next.js Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+npm-debug.log*
+
+# Downloaded binaries & runtime logs
+bin/
+logs/
+*.log
