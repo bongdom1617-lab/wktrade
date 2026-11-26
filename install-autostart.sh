@@ -9,10 +9,10 @@ mkdir -p "$AGENTS_DIR" "$LOG_DIR"
 NODE_BIN_DIR="$(dirname "$(which node)")"
 PATH_ENV="$NODE_BIN_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
-# Ensure production frontend build exists
-if [ ! -d "$ROOT_DIR/frontend/.next" ]; then
-  echo "Building GOLD AI Frontend production bundle..."
-  (cd "$ROOT_DIR/frontend" && npm run build)
+# Ensure production Next.js build exists at repo root
+if [ ! -d "$ROOT_DIR/.next" ]; then
+  echo "Building GOLD AI Next.js production bundle..."
+  (cd "$ROOT_DIR" && npm run build)
 fi
 
 cat > "$AGENTS_DIR/com.goldai.backend.plist" <<EOF
@@ -52,9 +52,9 @@ cat > "$AGENTS_DIR/com.goldai.frontend.plist" <<EOF
     <string>$NODE_BIN_DIR/npm</string>
     <string>run</string>
     <string>start</string>
-    <string>--prefix</string><string>$ROOT_DIR/frontend</string>
+    <string>--prefix</string><string>$ROOT_DIR</string>
   </array>
-  <key>WorkingDirectory</key><string>$ROOT_DIR/frontend</string>
+  <key>WorkingDirectory</key><string>$ROOT_DIR</string>
   <key>EnvironmentVariables</key>
   <dict><key>PATH</key><string>$PATH_ENV</string></dict>
   <key>RunAtLoad</key><true/>
@@ -69,9 +69,8 @@ EOF
 launchctl unload "$AGENTS_DIR/com.goldai.backend.plist" 2>/dev/null || true
 launchctl unload "$AGENTS_DIR/com.goldai.frontend.plist" 2>/dev/null || true
 
-# Free ports 8000/3000 if temporary GOLD AI servers are already running
 pkill -f "gold-ai/backend.*uvicorn" 2>/dev/null || true
-pkill -f "gold-ai/frontend.*next" 2>/dev/null || true
+pkill -f "gold-ai.*next" 2>/dev/null || true
 sleep 1
 
 launchctl load "$AGENTS_DIR/com.goldai.backend.plist"
@@ -82,5 +81,3 @@ echo "GOLD AI autostart installed and running!"
 echo "  Dashboard: http://localhost:3000"
 echo "  Backend  : http://127.0.0.1:8000/docs"
 echo "  Logs     : $LOG_DIR"
-echo "Both services now auto-start on macOS login and auto-restart if anything crashes."
-echo "Run ./uninstall-autostart.sh anytime to remove."

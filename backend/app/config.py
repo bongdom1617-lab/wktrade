@@ -13,8 +13,6 @@ DEFAULT_SQLITE_PATH = Path("/tmp/gold_ai.db") if IS_VERCEL else (BASE_DIR / "gol
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(BASE_DIR / ".env"),
-        env_file_encoding="utf-8",
         extra="ignore",
     )
 

@@ -1,64 +1,37 @@
 # GOLD AI — Real-Time XAUUSD Trading Analyzer
 
-An independent, institutional-grade AI web application that analyzes live spot Gold (**XAUUSD**) in real time across 7 timeframes (`M1`, `M5`, `M15`, `M30`, `H1`, `H4`, `D1`) and generates transparent, risk-managed trading recommendations (**BUY / SELL / WAIT**).
+An independent, all-in-one full-stack AI platform that analyzes live spot Gold (**XAUUSD**) in real time across 7 timeframes (`M1`, `M5`, `M15`, `M30`, `H1`, `H4`, `D1`), provides disciplined **BUY / SELL / WAIT** recommendations with Smart SL/TP (`>= 1:2.0` R:R), and includes **Historical XAUUSD Backtesting** and **Live Non-Executing Forward Testing**.
 
-**Key Guarantees:**
-- **No Exness, MT5, or broker account credentials required.**
-- **No automatic trade execution** and **never guarantees profits**.
-- **Zero simulated or fake prices** — explicitly detects and warns on delayed, market-closed, or disconnected feeds, automatically suspending BUY/SELL signals when live data is degraded.
-- **Evidence-based WAIT discipline** — never forces trades when timeframes conflict, spread is wide, momentum is exhausted, or Risk-to-Reward falls below `1:2.0`.
+- **Zero broker login / Exness / MT5 credentials required**
+- **Zero `.env` files required** — works out-of-the-box locally and on Vercel
+- **Zero fake prices & trading execution permanently disabled**
 
 ---
 
-## Architecture
+## One-Click Vercel Deployment (Everything in One Piece)
 
-- **Frontend (`/frontend`)**: Next.js 15, TypeScript, Tailwind CSS v4, TradingView Lightweight Charts v5 (synchronized candlesticks + EMAs/BB/VWAP/S&R/Signal overlays + RSI 14 + MACD panels), WebSocket real-time streaming.
-- **Backend (`/backend`)**: Python FastAPI, Uvicorn, WebSocket (`/ws/market`), Pandas/NumPy quantitative indicator & structure engine, SQLAlchemy ORM (PostgreSQL / Supabase via `DATABASE_URL`, automatic local SQLite fallback).
-- **Live Market Data Layer (`/backend/app/market_data`)**:
-  - Primary Live Feed: **BiQuote Spot XAUUSD** (`Bid`, `Ask`, `Spread`, and real-time `M1`–`D1` candlesticks) — works out-of-the-box with zero API keys.
-  - Secondary Verification & Failover Feed: **Swissquote Institutional BBO XAU/USD** (cross-checks quote integrity and auto-fails over if primary stalls).
-  - Optional Enterprise Provider: **Twelve Data** (`TWELVE_DATA_API_KEY` in `backend/.env`).
+This repository is structured as a unified full-stack Vercel project at repo root (`.`):
+- **Next.js 15 Frontend:** `package.json` + `src/` at repo root
+- **Python FastAPI Backend:** `api/index.py` + `backend/app/` + `requirements.txt` at repo root
+- **Unified Routing:** `vercel.json` routes `/api/*`, `/docs`, and `/openapi.json` → Python FastAPI (`/api/index`), and all pages → Next.js
+
+### Deploy Steps
+1. Open https://vercel.com/new and import **`bongdom1617-lab/wktrade`**.
+2. Leave **Root Directory** as `.` and **Environment Variables** completely empty.
+3. Click **Deploy** — both frontend and backend deploy together on one URL with live 3s quote sync and 15s multi-timeframe AI analysis.
 
 ---
 
-## Quick Start
+## Local Development
 
-### 1. Run Everything Together
 ```bash
 ./start.sh
 ```
-- Frontend Dashboard: `http://localhost:3000`
-- Backend API & Docs: `http://127.0.0.1:8000/docs`
-- Live WebSocket Stream: `ws://127.0.0.1:8000/ws/market`
+- Dashboard: `http://localhost:3000`
+- FastAPI Docs: `http://127.0.0.1:8000/docs`
 
-### 2. Manual Startup
-
-**Backend:**
-```bash
-cd backend
-cp .env.example .env   # Optional: configure PostgreSQL/Supabase DATABASE_URL or TWELVE_DATA_API_KEY
-.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm run dev
-```
-
-### 3. Run Automated Tests
+### Run Backend Tests
 ```bash
 cd backend
 .venv/bin/pytest -s -v
 ```
-
----
-
-## Deploy to Vercel (Frontend + FastAPI Backend Together)
-
-This repository includes a root `vercel.json` configured with **Vercel Services** so Next.js (`frontend/`) and Python FastAPI (`backend/api/index.py`) deploy **together as one single Vercel project**:
-
-1. Open https://vercel.com/new and import **`bongdom1617-lab/wktrade`**.
-2. Leave **Root Directory** as `.` (repo root — `vercel.json` automatically wires `frontend/` and `backend/` together and routes `/api/*` → FastAPI and `/*` → Next.js).
-3. *(Recommended for permanent cloud history)* Add a **`DATABASE_URL`** environment variable pointing to **Supabase** or **Neon PostgreSQL** (`postgresql://...`). If omitted, the backend automatically uses writable `/tmp/gold_ai.db` on Vercel Serverless so deployment works out-of-the-box.
-4. Click **Deploy**. On Vercel Serverless, the frontend automatically switches from WebSocket to **Live HTTP Sync** (3s live quotes + 15s MTF analysis) with zero configuration.

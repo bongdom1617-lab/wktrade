@@ -5,10 +5,10 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$ROOT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
-# Build frontend production bundle automatically if missing
-if [ ! -d "$ROOT_DIR/frontend/.next" ]; then
-  echo "Building GOLD AI Frontend production bundle..."
-  (cd "$ROOT_DIR/frontend" && npm run build)
+# Build Next.js production bundle automatically if missing
+if [ ! -d "$ROOT_DIR/.next" ]; then
+  echo "Building GOLD AI Next.js production bundle..."
+  (cd "$ROOT_DIR" && npm run build)
 fi
 
 supervise() {
@@ -34,7 +34,7 @@ supervise "GOLD AI Backend" \
 BACK_PID=$!
 
 supervise "GOLD AI Frontend" \
-  npm run start --prefix "$ROOT_DIR/frontend" \
+  npm run start --prefix "$ROOT_DIR" \
   >> "$LOG_DIR/frontend.log" 2>&1 &
 FRONT_PID=$!
 

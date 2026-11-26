@@ -3,8 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Ensure backend/ root is on sys.path for Vercel Python runtime imports
-BACKEND_ROOT = str(Path(__file__).resolve().parent.parent)
+# Expose backend/ so `from app...` imports resolve identically on Vercel and locally
+BACKEND_ROOT = str(Path(__file__).resolve().parent.parent / "backend")
 if BACKEND_ROOT not in sys.path:
     sys.path.insert(0, BACKEND_ROOT)
 
